@@ -76,7 +76,7 @@ const MapComponent = () => {
     // Automatically cycle through WMS layers every 2 seconds
     const intervalId = setInterval(() => {
       setCurrentLayerIndex((prevIndex) => (prevIndex + 1) % wmsLayers.length);
-    }, 3000);
+    }, 300);
 
     // Cleanup interval on unmount
     return () => clearInterval(intervalId);
