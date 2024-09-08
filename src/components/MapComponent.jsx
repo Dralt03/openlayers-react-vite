@@ -11,13 +11,12 @@ import { defaults as defaultControls } from 'ol/control';
 const MapComponent = () => {
   const mapElement = useRef(null); // Ref for map DOM element
   const mapRef = useRef(null); // Ref for map instance
-  const [wmsLayer, setWmsLayer] = useState(null); // State to hold the current WMS layer
+  const [currentLayerIndex, setCurrentLayerIndex] = useState(0); // State to hold the current WMS layer index
 
   // List of WMS layers
   const wmsLayers = [
     { name: 'Land Use Land Cover 2005-06', url: 'https://bhuvan-vec2.nrsc.gov.in/bhuvan/wms', layer: 'lulc:BR_LULC50K_1112' },
     { name: 'Land Use Land Cover 2011-12', url: 'https://bhuvan-vec2.nrsc.gov.in/bhuvan/wms', layer: 'lulc:BR_LULC50K_1112' },
-
     { name: 'Urban Land Use: NUIS 2006-07', url: 'https://bhuvan-vec1.nrsc.gov.in/bhuvan/nuis/wms', layer: 'urban:nuis' }
   ];
 
@@ -47,12 +46,9 @@ const MapComponent = () => {
     };
   }, []);
 
-  // Function to handle WMS layer selection
-  const handleWmsLayerChange = (event) => {
-    const selectedLayer = event.target.value;
-    const selectedLayerDetails = wmsLayers.find(layer => layer.name === selectedLayer);
-
-    if (selectedLayerDetails) {
+  useEffect(() => {
+    // Function to add WMS layer to the map
+    const addWmsLayer = (layerDetails) => {
       // Remove existing WMS layer if any
       mapRef.current.getLayers().forEach(layer => {
         if (layer instanceof ImageLayer) {
@@ -63,21 +59,32 @@ const MapComponent = () => {
       // Add new WMS layer
       const newWmsLayer = new ImageLayer({
         source: new ImageWMS({
-          url: selectedLayerDetails.url,
+          url: layerDetails.url,
           params: {
-            LAYERS: selectedLayerDetails.layer,
+            LAYERS: layerDetails.layer,
           },
           serverType: 'geoserver',
         }),
       });
 
       mapRef.current.addLayer(newWmsLayer);
-    }
-  };
+    };
+
+    // Add the current WMS layer when the component mounts or layer index changes
+    addWmsLayer(wmsLayers[currentLayerIndex]);
+
+    // Automatically cycle through WMS layers every 2 seconds
+    const intervalId = setInterval(() => {
+      setCurrentLayerIndex((prevIndex) => (prevIndex + 1) % wmsLayers.length);
+    }, 3000);
+
+    // Cleanup interval on unmount
+    return () => clearInterval(intervalId);
+  }, [currentLayerIndex]);
 
   return (
     <div>
-      <h1 style={{ textAlign: 'center' }}>Select WMS Layer</h1>
+      <h1 style={{ textAlign: 'center' }}>Auto-Switching WMS Layers</h1>
       <div
         ref={mapElement}
         style={{
@@ -87,14 +94,7 @@ const MapComponent = () => {
         }}
       />
       <div style={{ textAlign: 'center', marginTop: '10px' }}>
-        <select onChange={handleWmsLayerChange} defaultValue="">
-          <option value="" disabled>Select WMS Layer</option>
-          {wmsLayers.map(layer => (
-            <option key={layer.name} value={layer.name}>
-              {layer.name}
-            </option>
-          ))}
-        </select>
+        <p>Currently displaying: {wmsLayers[currentLayerIndex].name}</p>
       </div>
     </div>
   );
