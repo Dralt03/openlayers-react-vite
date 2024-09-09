@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import 'ol/ol.css';
 import { Map, View } from 'ol';
 import TileLayer from 'ol/layer/Tile';
@@ -9,11 +9,10 @@ import { fromLonLat } from 'ol/proj';
 import { defaults as defaultControls } from 'ol/control';
 
 const MapComponent = () => {
-  const mapElement = useRef(null); // Ref for map DOM element
-  const mapRef = useRef(null); // Ref for map instance
-  const [currentLayerIndex, setCurrentLayerIndex] = useState(0); // State to hold the current WMS layer index
+  const mapElement = useRef(null);
+  const mapRef = useRef(null);
+  const [currentLayerName, setCurrentLayerName] = useState('');
 
-  // List of WMS layers
   const wmsLayers = [
     { name: 'Land Use Land Cover 2005-06', url: 'https://bhuvan-vec2.nrsc.gov.in/bhuvan/wms', layer: 'lulc:BR_LULC50K_1112' },
     { name: 'Land Use Land Cover 2011-12', url: 'https://bhuvan-vec2.nrsc.gov.in/bhuvan/wms', layer: 'lulc:BR_LULC50K_1112' },
@@ -21,80 +20,101 @@ const MapComponent = () => {
   ];
 
   useEffect(() => {
-    // Create base map using OpenStreetMap layer
     const osmLayer = new TileLayer({
       source: new OSM(),
     });
 
-    // Initialize map
     const map = new Map({
-      target: mapElement.current, // Target the div element with ref
-      layers: [osmLayer], // Start with base layer
+      target: mapElement.current,
+      layers: [osmLayer],
       view: new View({
-        center: fromLonLat([78.9629, 20.5937]), // Center on India
-        zoom: 5, // Adjust the zoom level as needed
+        center: fromLonLat([78.9629, 20.5937]),
+        zoom: 5,
       }),
-      controls: defaultControls(), // Enable default map controls
+      controls: defaultControls(),
     });
 
-    // Store the map instance in a ref for further interactions
     mapRef.current = map;
 
     return () => {
-      // Clean up when component unmounts
       map.setTarget(null);
     };
   }, []);
 
   useEffect(() => {
-    // Function to add WMS layer to the map
-    const addWmsLayer = (layerDetails) => {
-      // Remove existing WMS layer if any
-      mapRef.current.getLayers().forEach(layer => {
-        if (layer instanceof ImageLayer) {
-          mapRef.current.removeLayer(layer);
+    const showSmoothTransitions = (wmsLayers, transitionDuration) => {
+      let currentIndex = 0;
+      let nextIndex = 1;
+      let currentLayer = null;
+      let nextLayer = null;
+
+      const createWmsLayer = (layerDetails, opacity = 1) => {
+        return new ImageLayer({
+          source: new ImageWMS({
+            url: layerDetails.url,
+            params: {
+              LAYERS: layerDetails.layer,
+            },
+            serverType: 'geoserver',
+          }),
+          opacity: opacity,
+        });
+      };
+
+      const transition = () => {
+        if (currentLayer) {
+          mapRef.current.removeLayer(currentLayer);
         }
-      });
 
-      // Add new WMS layer
-      const newWmsLayer = new ImageLayer({
-        source: new ImageWMS({
-          url: layerDetails.url,
-          params: {
-            LAYERS: layerDetails.layer,
-          },
-          serverType: 'geoserver',
-        }),
-      });
+        currentLayer = nextLayer;
+        nextIndex = (nextIndex + 1) % wmsLayers.length;
+        nextLayer = createWmsLayer(wmsLayers[nextIndex], 0);
+        mapRef.current.addLayer(nextLayer);
 
-      mapRef.current.addLayer(newWmsLayer);
+        setCurrentLayerName(wmsLayers[currentIndex].name);
+
+        let start = null;
+        const animate = (timestamp) => {
+          if (!start) start = timestamp;
+          const progress = (timestamp - start) / transitionDuration;
+
+          if (progress < 1) {
+            currentLayer.setOpacity(1 - progress);
+            nextLayer.setOpacity(progress);
+            requestAnimationFrame(animate);
+          } else {
+            currentIndex = (currentIndex + 1) % wmsLayers.length;
+            setTimeout(transition, 100); // Wait for 2 seconds before next transition
+          }
+        };
+
+        requestAnimationFrame(animate);
+      };
+
+      // Start the transition
+      nextLayer = createWmsLayer(wmsLayers[currentIndex]);
+      mapRef.current.addLayer(nextLayer);
+      transition();
     };
 
-    // Add the current WMS layer when the component mounts or layer index changes
-    addWmsLayer(wmsLayers[currentLayerIndex]);
+    showSmoothTransitions(wmsLayers, 1000); // 1000ms (1 second) transition duration
 
-    // Automatically cycle through WMS layers every 2 seconds
-    const intervalId = setInterval(() => {
-      setCurrentLayerIndex((prevIndex) => (prevIndex + 1) % wmsLayers.length);
-    }, 300);
-
-    // Cleanup interval on unmount
-    return () => clearInterval(intervalId);
-  }, [currentLayerIndex]);
+    // No need for cleanup as the transitions will stop when the component unmounts
+  }, []);
 
   return (
     <div>
-      <h1 style={{ textAlign: 'center' }}>Auto-Switching WMS Layers</h1>
+      <h1 style={{ textAlign: 'center' }}>Smooth Transitioning WMS Layers</h1>
       <div
         ref={mapElement}
         style={{
-          height: '80vh', // Set height of map container
-          width: '100vw', // Full width
+          height: '80vh',
+          width: '100vw',
           border: '2px solid #000',
         }}
       />
       <div style={{ textAlign: 'center', marginTop: '10px' }}>
-        <p>Currently displaying: {wmsLayers[currentLayerIndex].name}</p>
+        <p>Currently displaying: {currentLayerName}</p>
       </div>
     </div>
   );
